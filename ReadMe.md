@@ -82,30 +82,30 @@ Height scaling determines the range between the lowest and highest points on
 the landscape. Lower values keep the landscape flatter and easier to navigate.
 Landscape 0000 uses a fixed scaling factor of 0x18, but all other landscapes
 use a random value massaged into the range 0x0e to 0x24. This will be used in
-step 5 below.
+step 6 below.
 
-### 3) Random fill
+### 4) Random fill
 
 The map area is filled with byte values from the RNG, with rows from back to
 front, in right to left order. The reverse ordering is due to the original 6502
 game code, which loops backwards as long as the index is positive using the
 `BPL` instruction.
 
-### 4) Smoothing passes
+### 5) Smoothing passes
 
 The random values are smoothed by averaging groups of 4 values and replacing the
 first value with this average. This is performed on each row from back to front,
 then each column from right to left. This process is repeated a second time.
 
-### 5) Scale and offset
+### 6) Scale and offset
 
 The smoothed values are treated as signed 7-bit values by subtracting each from
-0x80. The result is scaled by multiplying it by the height factor from step 2
+0x80. The result is scaled by multiplying it by the height factor from step 3
 above, then taking the upper 8 bits of the result to give the height. This is
 then offset by 6 to re-centre in the middle of the height range, before being
 clamped into the legal range of 1 to 11.
 
-### 6) De-spike passes
+### 7) De-spike passes
 
 To improve the appearance of the map all single vertex spikes and troughs are
 removed. This is again performed on rows from back to front, and columns from
@@ -117,7 +117,7 @@ lower of the other two heights.
 
 This completes the final height generation, but not the stored data.
 
-### 7) Shape codes
+### 8) Shape codes
 
 To simplify use of the map at runtime, the groups of 4 vertices that form each
 tile are compared to determine whether it's level and how it will appear when
@@ -127,7 +127,7 @@ each map value.
 A code of zero means the tile is level (all vertex heights match). See the
 script code for the layouts that generate the other values. Value 8 not used.
 
-### 8) Nibble swap
+### 9) Nibble swap
 
 For some reason the game prefers to work with the height in the upper 4 bits and
 the shape in the lower 4 bits. This step simply reverses order of the nibbles.
