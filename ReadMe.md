@@ -3,7 +3,7 @@
 A Python script to generate landscapes matching those in Geoff Crammond's
 classic 80's game: The Sentinel (aka The Sentry).
 
-The script generates the landscape data but does not place any objects.
+The script generates the landscape and positions of all game objects.
 
 ## Requirements
 
@@ -111,15 +111,16 @@ To improve the appearance of the map all single vertex spikes and troughs are
 removed. This is again performed on rows from back to front, and columns from
 right to left. This process is repeated a second time.
 
-De-spiking takes spans of 3 vertices, and checks if vertex 1 and 3 are both
-above _or_ both below vertex 2. If they are the height of vertex 2 is set to the
-lower of the other two heights.
+De-spiking takes spans of 3 vertices and decides on a new central vertex height.
+This was originally thought to be flattening the centre if the sides were both
+above or below it but the logic is slightly more complicated. See the code for
+details.
 
 This completes the final height generation, but not the stored data.
 
 ### 8) Shape codes
 
-To simplify use of the map at runtime, the groups of 4 vertices that form each
+To simplify use of the map at runtime the groups of 4 vertices that form each
 tile are compared to determine whether it's level and how it will appear when
 drawn. This forms a 4-bit code, which is stored (for now) in the upper 4 bits of
 each map value.
@@ -129,11 +130,112 @@ script code for the layouts that generate the other values. Value 8 not used.
 
 ### 9) Nibble swap
 
-For some reason the game prefers to work with the height in the upper 4 bits and
-the shape in the lower 4 bits. This step simply reverses order of the nibbles.
+The game prefers to work with the height in the upper 4 bits and the shape in
+the lower 4 bits, so this step reverses the order of the nibbles. This makes it
+easier to check map locations for placed objects without any masking, indicated
+by a map value of 0xc0 or greater.
 
-The original game will continue from this point to place objects, again guided
-by values from the RNG.
+## Object Placement
+
+After generating the landscape objects are placed on it, in the order: pedestal,
+Sentinel, sentries (if any), player (robot) and trees. The number of sentries
+and trees varies between landscapes and the landscape colour depends this count.
+
+### 1) Sentry count
+
+The base count of sentries is taken from the thousands digit of the landscape
+number, plus two. Then a value is taken from the RNG to use as an adjustment
+from this count. The number of leading zeros in the binary representation of the
+lower 7 bits forms a value, which is negative (1s complement) if bit 7 was set.
+If the sum is in range 0-7 this count is used, otherwise the process is
+repeated until it's in range.
+
+The bias of 2 in the calculation is what prevents the extended hex landscapes
+(E000 and above) being usable in
+[Augmentinel](https://simonowen.com/spectrum/augmentinel/). The final sentry
+count is never in range and the loop continues forever.
+
+For levels below 100 the sentry count is also limited to the tens digit of the
+landscape number, to make earlier levels a little easier.
+
+### 2) Highest points
+
+The map is scanned for the highest points to place the Sentinel and sentries.
+This is done in 4x4 areas (less 1 for right and back edges), in order from front
+to back and left to right. Within each area the height and location of the
+highest flat tile is stored. This gives up to 64 potential placement locations.
+
+### 3) Random high point
+
+The highest level from the previous step is used as a starting point to place
+the Sentinel and possibly sentries. The results from the previous step are
+filtered for this height to give a subset of potential positions to use. If no
+positions are found the height is reduced by 1. If it hits zero no more
+placements are made. The position list is generated in reverse order due to the
+C64 reversed loop indexing in the code.
+
+A value is taken from the RNG to use as an index into the new list. To avoid
+discarding too many out-of-range random indices the nearest 2^n-1 bitmask above
+the count is applied first. If it's still out of range the process is repeated.
+
+### 4) Place Sentinel/sentries
+
+Once a valid random position is found the next Sentinel or sentry is ready for
+placement. If we're placing the Sentinel we put a pedestal on the same location
+first, with the Sentinel on top of it.
+
+All placed objects have a random rotation assigned. A value is taken from the
+RNG and masked with 0xf8 to align it with one of 32 rotation steps. Then 0x60
+(135 degrees) is added to it before use. I believe this bias was tuned to give
+the best starting view for the player. Even though the pedestal is given a
+rotation it's reset to zero to align it with the tile it sits on. Zero degrees
+is facing away and angles represent clockwise rotation.
+
+After placement the current 4x4 tile region and all 4x4 tiles surrounding it are
+marked with zero height to ensure a sentry is not placed too close to this one.
+This also gives a good spread of objects across the landscape.
+
+A value is taken from the RNG to determine the delay before first rotation and
+the rotation direction. If bit 0 is set the entity rotates anti-clockwise. Bits
+5 to 0 from the value are ORed with 5 give the number of game timer ticks until
+the object is due to rotate next.
+
+If more sentries are due to be placed the process repeats from step 2) above.
+
+### 5) Place player
+
+Landscape 0000 has a fixed starting location for the player at x=8 z=17. This
+was probably chosen to give the player a position with good visibility and
+moving options.
+
+All later landscapes place the player at a random position on the map. This
+location also has a maximum height to avoid the player being placed at or above
+the height of the lowest sentry. The height is further limited to 6 or below.
+
+x and z coordinates are taken from the RNG and masked against 0x1f, each
+repeating until they're below 0x1f. This location is checked for an unoccupied
+flat tile below the height limit. This repeats up to 255 times until a suitable
+location is found. If the search is unsuccessful the height cap is raised by one
+and the process repeated. This continues until the maximum map height of 0xc.
+
+### 6) Place trees
+
+The number of trees is used to balance out the total energy available on the
+landscape. More sentries means fewer trees can be placed.
+
+The calculated number of trees is random with a bias. Take a value from the RND
+and sum the values from bits 0-2, bits 3-6 (shifted down), then add 10. The
+maximum number of trees is 48, minus 3 for each placed sentry/Sentinel. If the
+count is above this maximum it's capped.
+
+Trees are placed at random positions on the map using the same logic as placing
+the player, and with the most recent height cap value.
+
+### Secret Code
+
+Once all objects are placed the RNG is used to generate the secret code for the
+current landscape, using the platform-specific technique described in the
+[sentcode](https://github.com/simonowen/sentcode) project.
 
 ## Test Data
 
