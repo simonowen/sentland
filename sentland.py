@@ -7,6 +7,7 @@
 # By Simon Owen https://github.com/simonowen/sentland
 
 import sys
+import struct
 import os.path
 import argparse
 import numpy as np  # python -m pip install numpy
@@ -237,17 +238,19 @@ def swap_nibbles(maparr):
 
 def seed(landscape_bcd):
     """Seed RNG using landscape number"""
-    global ull
+    global ull, rng_usage
     ull = (1 << 16) | landscape_bcd
+    rng_usage = 0
 
 
 def rng():
     """Pull next 8-bit value from random number generator"""
-    global ull
+    global ull, rng_usage
     for _ in range(8):
         ull <<= 1
         ull |= ((ull >> 20) ^ (ull >> 33)) & 1
 
+    rng_usage += 1
     return (ull >> 32) & 0xFF
 
 
@@ -543,6 +546,12 @@ def main(args):
         objects, max_height = place_sentries(land, maparr)
         objects, max_height = place_player(land, max_height, objects, maparr)
         objects, max_height = place_trees(max_height, objects, maparr)
+
+        # Sanity check the RNG usage against values from the original code.
+        with open("golden/iterations.bin", "rb") as f:
+            iterations = struct.unpack(f"<{num_landscapes}h", f.read())
+            if iterations[land] != rng_usage:
+                sys.exit(f"RNG mismatch: {rng_usage} != {iterations[land]}")
 
         if args.view:
             view_landscape(maparr)
