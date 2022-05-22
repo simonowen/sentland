@@ -53,17 +53,28 @@ def smooth_map(maparr, axis):
     return new_maparr
 
 def despike_midval(arr):
-    """Return lowest neighbour if peak or trough, else middle value"""
-    if (arr[0] > arr[1] < arr[2]) or (arr[0] < arr[1] > arr[2]):
-        return min(arr[0], arr[2])
-    else:
+    """Smooth 3 map vertices, returning a new central vertex height"""
+    if arr[1] == arr[2]:
         return arr[1]
+    elif arr[1] > arr[2]:
+        if arr[1] <= arr[0]:
+            return arr[1]
+        elif arr[0] < arr[2]:
+            return arr[2]
+        else:
+            return arr[0]
+    elif arr[1] >= arr[0]:
+        return arr[1]
+    elif arr[2] < arr[0]:
+        return arr[2]
+    else:
+        return arr[0]
 
 def despike_slice(arr):
     """Smooth a slice by flattening single vertex peaks and troughs"""
     arr_copy = arr[:]
-    for x in reversed(range(1, len(arr_copy) - 1)):
-        arr_copy[x] = despike_midval(arr_copy[x-1:x+2])
+    for x in reversed(range(0x20)):
+        arr_copy[x+1] = despike_midval(arr_copy[x:x+3])
     return arr_copy[:32]
 
 def despike_map(maparr, axis):
